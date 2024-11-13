@@ -4,6 +4,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "WiFiMQTT.h"
+#include "IrrigationControl.h"
 
 // Claves de los núcleos
 #define NUCLEO_PRIMARIO 0X01
