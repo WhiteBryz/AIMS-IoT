@@ -9,7 +9,6 @@
 #define NUCLEO_PRIMARIO 0X01
 #define NUCLEO_SECUNDARIO 0X00
 
-
 struct SensorsData {
   float temperature;
   float himidity;

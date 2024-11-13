@@ -3,12 +3,21 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include "env.h"
 
 #define MQTT_PORT 1883
 
-const char* ssid = "INFINITUMCA97_2.4_Ext";
-const char* password =  "GlSwVBuNxT";
-const char* mqtt_server = "test.mosquitto.org";
+// Crear un archivo llamado env.h con los valores y agregarlo:
+// struct KeysEnv {
+// 	char* ssid = "[ssid]";
+//   char* password =  "[pswd]";
+// 	char* mqtt_server = "[server]";
+// } KeysEnv;
+struct KeysEnv env;
+
+const char* ssid = env.ssid;
+const char* password =  env.password;
+const char* mqtt_server = env.ssid;
 
 // Conexiones
 WiFiClient espClient;
@@ -28,9 +37,7 @@ void WifiMqtt :: startConnections( void ){
     connectWiFi();
     client.setServer(mqtt_server, MQTT_PORT);
     Serial.println("Entro a startConnections y salió");
-
 }
-
 
 void WifiMqtt :: connectWiFi ( void ){
   Serial.println();
