@@ -48,7 +48,7 @@ void DualCoreESP32 :: ConfigCores( void ){
 
   Serial.println("Entro a ConfigCores");
 
-  // SendDataTask_t
+  // Conexión a Wifi y MQTT
   xTaskCreatePinnedToCore(
     this->WiFiMQTTTask,
     "WirelessConnections",
@@ -59,7 +59,7 @@ void DualCoreESP32 :: ConfigCores( void ){
     NUCLEO_PRIMARIO
   );
 
-  // SendDataTask
+  // Envío de datos al MQTT y guardado en MicroSD
   xTaskCreatePinnedToCore(
     this->SendDataTask,
     "SendData",
@@ -70,7 +70,7 @@ void DualCoreESP32 :: ConfigCores( void ){
     NUCLEO_SECUNDARIO
   );
 
-  // LocalTask
+  // Leer sensores y generar el JSON
   xTaskCreatePinnedToCore(
     this->ReadSensorsTask,
     "ReadSensors",
@@ -81,7 +81,7 @@ void DualCoreESP32 :: ConfigCores( void ){
     NUCLEO_SECUNDARIO
   );
 
-  // LocalTask
+  // Recibir datos a través de MQTT
   xTaskCreatePinnedToCore(
     this->ReciveDataTask,
     "RecieveData",
@@ -108,7 +108,7 @@ void DualCoreESP32 :: WiFiMQTTTask( void * pvParameters ){
       }
     //  Serial.println("Todo bien");
     }
-
+    mqttClient.loop();
     vTaskDelay(100/portTICK_PERIOD_MS);
   }
 }
