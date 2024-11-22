@@ -45,12 +45,13 @@ struct ChangeConfiguration{
 class IrrigationControl {
   public:
     // Sensores
-    String currentDate;
-    int s_airHumidity;
-    int s_airTemperature;
-    int s_soilMoisture;
-    int s_waterLevel;
+    DateTime currentDate;
+    int s_soilMoisture1;
+    int s_soilMoisture2;
     int s_lightIntensity;
+    float s_airHumidity;
+    float s_airTemperature;
+    float s_waterLevel;
 
     // Parámetros de configuración inicial para gestionar el riego
     String irrigationTime = "";
@@ -75,7 +76,9 @@ class IrrigationControl {
     static float readWaterLevel ( void );
 
     // Funciones adicionales
+    void readAllSensors( void );
     static void saveDataInSD(const String& data);
+    String createJSON ( void );
     void ChangeConfigurationParameters( ChangeConfiguration newConfig );
 };
 
@@ -115,7 +118,6 @@ void IrrigationControl :: init( void ){
     delay(2000);
 
 }
-
 void IrrigationControl :: ChangeConfigurationParameters ( ChangeConfiguration newConfig ){
   irrigationTime = newConfig.setIrrigationTime;
   minLightThreshold = newConfig.setLightThreshold;
@@ -123,7 +125,6 @@ void IrrigationControl :: ChangeConfigurationParameters ( ChangeConfiguration ne
   manualIrrigationMode = newConfig.setManualIrrigationMode;
   irrigationStatus = newConfig.setIrrigationStatus;
 }
-
 float IrrigationControl :: readAirHumidity ( void ){
   // Código para obtener la humedad del ambiente
   return dht.readHumidity();
@@ -152,7 +153,37 @@ int IrrigationControl :: readLightIntensity ( int pinSensor ){
   return analogRead(pinSensor);
 }
 
-void saveDataInSD(const String& data){
+void IrrigationControl :: readAllSensors( void ){
+  s_lightIntensity = readLightIntensity(LDR_PIN);
+  s_soilMoisture1 = readSoilMoisture(SOIL_MOISTURE1_PIN);
+  s_soilMoisture2 = readSoilMoisture(SOIL_MOISTURE2_PIN);
+  s_airTemperature = readAirTemperature();
+  s_airHumidity = readAirHumidity();
+  s_waterLevel = readWaterLevel();
+  currentDate = rtc.now();
+}
+
+String IrrigationControl :: createJSON ( void ){
+  // Crear JSON con estructura deseada
+  DynamicJsonDocument doc(512);
+  doc["fecha"] = String(currentDate.day()) + "/" + String(currentDate.month()) + "/" + String(currentDate.year());
+  doc["hora"] = String(currentDate.hour()) + ":" + String(currentDate.minute()) + ":" + String(currentDate.second());
+  doc["temperaturaAmbiente"] = s_airTemperature;
+  doc["humedadAmbiente"] = s_airHumidity;
+  doc["humedadSuelo"]["sensor1"] = s_soilMoisture1;
+  doc["humedadSuelo"]["sensor2"] = s_soilMoisture2;
+  doc["iluminacion"] = s_lightIntensity;
+  doc["riegoManual"] = false; // Cambiar a `true` si controlas riego manual
+  doc["nivelAgua"] = s_waterLevel;
+
+  // Convertir JSON a cadena
+  String jsonString;
+  serializeJson(doc, jsonString);
+
+  return jsonString;
+}
+
+void IrrigationControl :: saveDataInSD(const String& data){
   // Abrir el archivo en modo escritura/apéndice
     File file = SD.open("/datalog.txt", FILE_APPEND);
     if (file) {
@@ -164,5 +195,6 @@ void saveDataInSD(const String& data){
         Serial.println("Error al abrir datalog.txt para escritura.");
     }
 }
+
 
 #endif

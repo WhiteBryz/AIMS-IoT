@@ -18,6 +18,7 @@ struct SensorsData {
 };
 
 WifiMqtt Wireless;
+IrrigationControl ctrl;
 
 class DualCoreESP32{
   public:
@@ -113,17 +114,22 @@ void DualCoreESP32 :: WiFiMQTTTask( void * pvParameters ){
   }
 }
 
+void DualCoreESP32 :: ReadSensorsTask ( void * pvParameters){
+  // Inicializar controlador de riego
+  ctrl.init();
+
+  while(true){
+    ctrl.readAllSensors();
+
+    vTaskDelay(100/portTICK_PERIOD_MS);
+  }
+}
 void DualCoreESP32 :: SendDataTask ( void * pvParameters){
   while(true){
     vTaskDelay(100/portTICK_PERIOD_MS);
   }
 }
 void DualCoreESP32 :: ReciveDataTask ( void * pvParameters){
-  while(true){
-    vTaskDelay(100/portTICK_PERIOD_MS);
-  }
-}
-void DualCoreESP32 :: ReadSensorsTask ( void * pvParameters){
   while(true){
     vTaskDelay(100/portTICK_PERIOD_MS);
   }

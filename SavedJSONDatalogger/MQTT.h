@@ -18,6 +18,8 @@ const char* mqtt_server = env.mqtt_server;
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
+const char* topicRX = "ucol/iot/config";
+
 class MQTTHandler {
   public:
     static void startConnections();
@@ -66,8 +68,10 @@ bool MQTTHandler::isMQTTConnected() {
 void MQTTHandler::reconnectMQTT() {
     if (!isMQTTConnected()) {
         Serial.print("Intentando conectar a MQTT...");
-        if (mqttClient.connect("ESP32Client")) {
+        if (mqttClient.connect("IoTRiegoAutoMKUltra")) {
             Serial.println("Conectado a MQTT.");
+            mqttClient.subscribe(topicRX);
+            Serial.println("Suscrito al topic ucol/iot/confs.");
         } else {
             Serial.print("Error de conexión MQTT. Código: ");
             Serial.println(mqttClient.state());

@@ -8,7 +8,7 @@
 #include "MQTT.h"
 
 // Configuración de MQTT
-const char* topicWorked = "ucol/iot";
+const char* topicTX = "ucol/iot/sensores";
 
 // Pines y configuración de dispositivos
 #define TRIGGER 26
@@ -30,7 +30,7 @@ DHT dht(DHT_PIN, DHT11);
 RTC_DS1307 rtc;
 
 // Función de callback para manejar mensajes entrantes
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
+void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print("Mensaje recibido en el topic: ");
     Serial.println(topic);
 
@@ -42,7 +42,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Serial.print("Contenido del mensaje: ");
     Serial.println(message);
 
-    if (String(topic) == topicWorked) {
+    if (String(topic) == topicRX) {
         Serial.println("Procesando mensaje del topic ucol/iot...");
     }
 }
@@ -54,8 +54,8 @@ void guardarEnSD(const String& data) {
     if (file) {
         file.println(data); // Escribir datos en el archivo
         file.close();       // Cerrar el archivo
-        Serial.println("Datos guardados en datalog.txt:");
-        Serial.println(data);
+        Serial.println("Datos guardados en datalog.txt");
+        // Serial.println(data);
     } else {
         Serial.println("Error al abrir datalog.txt para escritura.");
     }
@@ -68,13 +68,9 @@ void setup() {
     MQTTHandler::startConnections();
 
     // Establecer el callback
-    mqttClient.setCallback(mqttCallback);
+    mqttClient.setCallback(callback);
 
-    // Suscribirse al topic
-    if (MQTTHandler::isMQTTConnected()) {
-        mqttClient.subscribe(topicWorked);
-        Serial.println("Suscrito al topic ucol/iot.");
-    }
+    MQTTHandler::isMQTTConnected();
 
     // Inicialización de componentes
     lcd.init();
@@ -120,7 +116,7 @@ void loop() {
 
     // Publicar datos al topic cada 10 segundos
     static unsigned long lastPublishTime = 0;
-    if (millis() - lastPublishTime > 10000) {
+    if (millis() - lastPublishTime > 1000) {
         // Obtener lecturas de sensores
         int ldrValue = analogRead(LDR_PIN);
         int soilMoisture1 = analogRead(SOIL_MOISTURE1_PIN);
@@ -154,9 +150,9 @@ void loop() {
 
         // Publicar JSON en el topic MQTT
         if (MQTTHandler::isMQTTConnected()) {
-            MQTTHandler::publishMessage(topicWorked, jsonString.c_str());
-            Serial.println("Datos publicados en MQTT:");
-            Serial.println(jsonString);
+            MQTTHandler::publishMessage(topicTX, jsonString.c_str());
+            Serial.println("Datos publicados en MQTT");
+            // Serial.println(jsonString);
         } else {
             Serial.println("No se pudo publicar. MQTT no está conectado.");
         }
