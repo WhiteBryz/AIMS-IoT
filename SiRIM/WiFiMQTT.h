@@ -88,6 +88,7 @@ void WifiMqtt :: reconnectMQTT ( void ){
     }
 }
 
+// MODIFICAR FUNCION PARA QUE SEA CON ENV O MARCAR UN DEFAULT DEL TOPICO DE ENVÍO DE DATOS
 void WifiMqtt :: publishMessage(const char* topic, const char* payload){
   if (isMQTTConnected()) {
         mqttClient.publish(topic, payload);

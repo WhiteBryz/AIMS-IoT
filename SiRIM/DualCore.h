@@ -18,7 +18,7 @@ struct SensorsData {
 };
 
 WifiMqtt Wireless;
-IrrigationControl ctrl;
+IrrigationControl iCtrl;
 
 class DualCoreESP32{
   public:
@@ -116,11 +116,36 @@ void DualCoreESP32 :: WiFiMQTTTask( void * pvParameters ){
 
 void DualCoreESP32 :: ReadSensorsTask ( void * pvParameters){
   // Inicializar controlador de riego
-  ctrl.init();
+  iCtrl.init();
 
   while(true){
-    ctrl.readAllSensors();
+    iCtrl.readAllSensors();
 
+    String json = iCtrl.createJSON();
+
+    iCtrl.saveDataInSD(json);
+
+    // Evaluación si es hora de regar
+    if(iCtrl.isManualIrrigationActivated()){
+      if(iCtrl.irrigationStatus){
+        // El usuario activó la opción de regar
+
+      }
+    } else {
+      if(iCtrl.isTimerIrrigationActivated()){
+        if(iCtrl.evaluateIfIsTimeToWater()){
+          // Es hora de regar...
+
+        }
+      } else {
+        if(iCtrl.evaluateIrrigationDecision()){
+          // Se llegó a valores mínimos de los sensores
+
+        }
+      }
+    }
+    // Queue para envíar JSON con datos
+    Wireless.publishMessage(const char *topic, const char *payload); // MODIFICAR AQUÍ
     vTaskDelay(100/portTICK_PERIOD_MS);
   }
 }

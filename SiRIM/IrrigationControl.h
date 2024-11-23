@@ -39,12 +39,14 @@ struct ChangeConfiguration{
   int setLightThreshold;
   int setSoilMoistureThreshold;
   bool setManualIrrigationMode;
+  bool setTimerIrrigationMode;
   bool setIrrigationStatus;
 };
 
 class IrrigationControl {
-  public:
-    // Sensores
+  private:
+    int counterForTimer = 0;
+    // Lectura de los Sensores
     DateTime currentDate;
     int s_soilMoisture1;
     int s_soilMoisture2;
@@ -53,14 +55,20 @@ class IrrigationControl {
     float s_airTemperature;
     float s_waterLevel;
 
-    // Parámetros de configuración inicial para gestionar el riego
-    String irrigationTime = "";
-    bool irrigationConfigWithTimer = false;
+    /*-- Parámetros de configuración para gestionar el riego (se modifica por medio de mensaje MQTT en JSON) --*/
+    String irrigationAtTime = "";
+    int secondsSetForWatering = 10;
 
-    int minLightThreshold = 4;
-    int minSoilMoistureThreshold = 500;
+    int minLightThreshold = 100;
+    int minSoilMoistureThreshold = 100;
     
-    bool manualIrrigationMode = false;
+    // Condiciones para riego
+    bool manualIrrigationActivated = false;
+    bool timerIrrigationActivated = false;
+  public:
+
+
+    // Estado de riego
     bool irrigationStatus = false;
 
     /*--- Funciones para la Lógica de riego ---*/
@@ -77,9 +85,17 @@ class IrrigationControl {
 
     // Funciones adicionales
     void readAllSensors( void );
+    void clearAllReadings( void );
+    String currentHour( void );
     static void saveDataInSD(const String& data);
     String createJSON ( void );
     void ChangeConfigurationParameters( ChangeConfiguration newConfig );
+
+    // Funciones para condicionales de riego
+    bool isManualIrrigationActivated( void );
+    bool isTimerIrrigationActivated( void );
+    bool evaluateIrrigationDecision( void );
+    bool evaluateIfIsTimeToWater( void );
 };
 
 void IrrigationControl :: init( void ){
@@ -118,50 +134,41 @@ void IrrigationControl :: init( void ){
     delay(2000);
 
 }
+
 void IrrigationControl :: ChangeConfigurationParameters ( ChangeConfiguration newConfig ){
-  irrigationTime = newConfig.setIrrigationTime;
+  irrigationAtTime = newConfig.setIrrigationTime;
   minLightThreshold = newConfig.setLightThreshold;
   minSoilMoistureThreshold = newConfig.setSoilMoistureThreshold;
-  manualIrrigationMode = newConfig.setManualIrrigationMode;
+  manualIrrigationActivated = newConfig.setManualIrrigationMode;
+  timerIrrigationActivated = newConfig.setTimerIrrigationMode;
   irrigationStatus = newConfig.setIrrigationStatus;
 }
-float IrrigationControl :: readAirHumidity ( void ){
-  // Código para obtener la humedad del ambiente
-  return dht.readHumidity();
+String IrrigationControl :: currentHour(void){
+  return String(currentDate.hour()) + ":" + String(currentDate.minute());
 }
-float IrrigationControl :: readAirTemperature ( void ){
-  // Código para obtener la temperatura del ambiente
-  return dht.readTemperature();
+/*-- Funciones para condicionales de riego --*/
+bool IrrigationControl :: isManualIrrigationActivated( void ){
+  return manualIrrigationActivated;
 }
-int IrrigationControl :: readSoilMoisture ( int pinSensor ){
-  // Código para obtener la humedad del suelo
-  return analogRead(pinSensor);
+bool IrrigationControl :: isTimerIrrigationActivated( void ){
+  return timerIrrigationActivated;
 }
-float IrrigationControl :: readWaterLevel ( void ){
-  // Código para obtener el nivel del agua
-  digitalWrite(TRIGGER, LOW);
-  delayMicroseconds(2);
+bool IrrigationControl :: evaluateIrrigationDecision( void ){
+  int medianSoilMoisture = (s_soilMoisture1 + s_soilMoisture2)/2;
 
-  digitalWrite(TRIGGER, HIGH);
-  delayMicroseconds(10);
-
-  digitalWrite(TRIGGER, LOW);
-
-  return (pulseIn(ECHO, HIGH) * VELOCIDAD_SONIDO / 2);
+  return s_lightIntensity < minLightThreshold && medianSoilMoisture < minSoilMoistureThreshold;
 }
-int IrrigationControl :: readLightIntensity ( int pinSensor ){
-  return analogRead(pinSensor);
+bool IrrigationControl :: evaluateIfIsTimeToWater( void ){
+  if(currentHour() == irrigationAtTime && counterForTimer == 0){
+    counterForTimer++;
+    return true;
+  } else if (currentHour() != irrigationAtTime){
+    counterForTimer = 0;
+  }
+  return false;
 }
 
-void IrrigationControl :: readAllSensors( void ){
-  s_lightIntensity = readLightIntensity(LDR_PIN);
-  s_soilMoisture1 = readSoilMoisture(SOIL_MOISTURE1_PIN);
-  s_soilMoisture2 = readSoilMoisture(SOIL_MOISTURE2_PIN);
-  s_airTemperature = readAirTemperature();
-  s_airHumidity = readAirHumidity();
-  s_waterLevel = readWaterLevel();
-  currentDate = rtc.now();
-}
+/*-- Funciones para JSON y Memoria SD --*/
 
 String IrrigationControl :: createJSON ( void ){
   // Crear JSON con estructura deseada
@@ -196,5 +203,58 @@ void IrrigationControl :: saveDataInSD(const String& data){
     }
 }
 
+/* Funciones para lecturas de los sensores */
+void IrrigationControl :: readAllSensors( void ){
+  s_lightIntensity = readLightIntensity(LDR_PIN);
+  s_soilMoisture1 = readSoilMoisture(SOIL_MOISTURE1_PIN);
+  s_soilMoisture2 = readSoilMoisture(SOIL_MOISTURE2_PIN);
+  s_airTemperature = readAirTemperature();
+  s_airHumidity = readAirHumidity();
+  s_waterLevel = readWaterLevel();
+  currentDate = rtc.now();
+}
+
+void IrrigationControl :: clearAllReadings( void ){
+  s_lightIntensity = 0;
+  s_soilMoisture1 = 0;
+  s_soilMoisture2 = 0;
+  s_airTemperature = 0;
+  s_airHumidity = 0;
+  s_waterLevel = 0;
+}
+
+float IrrigationControl :: readAirHumidity ( void ){
+  // Código para obtener la humedad del ambiente
+  return dht.readHumidity();
+}
+
+float IrrigationControl :: readAirTemperature ( void ){
+  // Código para obtener la temperatura del ambiente
+  return dht.readTemperature();
+}
+
+int IrrigationControl :: readSoilMoisture ( int pinSensor ){
+  // Código para obtener la humedad del suelo
+  // map(soilMoistureValue, AirValue, WaterValue, 0, 100) <- Cambiar por nuestras lecturas 
+  return map(analogRead(pinSensor), 790, 390, 0, 100);
+}
+
+float IrrigationControl :: readWaterLevel ( void ){
+  // Código para obtener el nivel del agua
+  digitalWrite(TRIGGER, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(TRIGGER, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(TRIGGER, LOW);
+
+  return (pulseIn(ECHO, HIGH) * VELOCIDAD_SONIDO / 2);
+}
+
+int IrrigationControl :: readLightIntensity ( int pinSensor ){
+  // map(fotoresistencia, minReading, maxReading, minValue, maxValue);
+  return map(analogRead(pinSensor), 0, 1000, 0, 100);
+}
 
 #endif
