@@ -10,11 +10,18 @@
 #define NUCLEO_PRIMARIO 0X01
 #define NUCLEO_SECUNDARIO 0X00
 
+// Definición del intervalo de lectura en milisegundos
+#define SENSOR_READ_INTERVAL 5000  // 5 segundos
+
 struct SensorsData {
   float temperature;
   float himidity;
   float soilMoisture;
   uint32_t timestamp;
+};
+
+struct MQTTMessage {
+    char message[256];  // Ajusta el tamaño según tus necesidades
 };
 
 WifiMqtt Wireless;
@@ -35,7 +42,7 @@ class DualCoreESP32{
     TaskHandle_t ReadSensorsTask_t;
 
     // Queues
-    QueueHandle_t transmitDataQueue;
+    static QueueHandle_t mqttQueue;
 
     static void WiFiMQTTTask( void * pvParameters );
     static void SendDataTask( void *pvParameters );
@@ -43,9 +50,12 @@ class DualCoreESP32{
     static void ReadSensorsTask( void *pvParameters );
 };
 
+// Inicializar la cola estática
+QueueHandle_t DualCoreESP32::mqttQueue = NULL;
+
 void DualCoreESP32 :: ConfigCores( void ){
   // Inicializar colas
-  transmitDataQueue = xQueueCreate(10, sizeof(SensorsData));
+  mqttQueue = xQueueCreate(10, sizeof(MQTTMessage));
 
   Serial.println("Entro a ConfigCores");
 
@@ -60,16 +70,27 @@ void DualCoreESP32 :: ConfigCores( void ){
     NUCLEO_PRIMARIO
   );
 
-  // Envío de datos al MQTT y guardado en MicroSD
-  xTaskCreatePinnedToCore(
-    this->SendDataTask,
-    "SendData",
-    10000,
-    NULL,
-    1,
-    &SendDataTask_t,
-    NUCLEO_SECUNDARIO
-  );
+  // // Envío de datos al MQTT y guardado en MicroSD
+  // xTaskCreatePinnedToCore(
+  //   this->SendDataTask,
+  //   "SendData",
+  //   10000,
+  //   NULL,
+  //   1,
+  //   &SendDataTask_t,
+  //   NUCLEO_PRIMARIO
+  // );
+
+  // // Recibir datos a través de MQTT
+  // xTaskCreatePinnedToCore(
+  //   this->ReciveDataTask,
+  //   "RecieveData",
+  //   10000,
+  //   NULL,
+  //   1,
+  //   &ReciveDataTask_t,
+  //   NUCLEO_SECUNDARIO
+  // );
 
   // Leer sensores y generar el JSON
   xTaskCreatePinnedToCore(
@@ -82,21 +103,14 @@ void DualCoreESP32 :: ConfigCores( void ){
     NUCLEO_SECUNDARIO
   );
 
-  // Recibir datos a través de MQTT
-  xTaskCreatePinnedToCore(
-    this->ReciveDataTask,
-    "RecieveData",
-    10000,
-    NULL,
-    1,
-    &ReciveDataTask_t,
-    NUCLEO_SECUNDARIO
-  );
 }
 
 void DualCoreESP32 :: WiFiMQTTTask( void * pvParameters ){
   Serial.println("Entro a WiFiMQTTTask");
   Wireless.startConnections();
+
+  // Buffer para recibir mensajes de la cola
+  MQTTMessage receivedMessage;
 
   while(true){
     if(!Wireless.isWiFiConnected()){
@@ -106,11 +120,17 @@ void DualCoreESP32 :: WiFiMQTTTask( void * pvParameters ){
       if(!Wireless.isMQTTConnected()){
         Serial.println("MQTT Desconectado");
         Wireless.reconnectMQTT();
+      } else {
+        // Verificar si hay mensajes para publicar en la cola
+        if(xQueueReceive(mqttQueue, &receivedMessage, 0) == pdTRUE) {
+            // Publicar el mensaje si hay conexión MQTT
+            Wireless.publishMessage(receivedMessage.message);
+        }
       }
     //  Serial.println("Todo bien");
     }
     mqttClient.loop();
-    vTaskDelay(100/portTICK_PERIOD_MS);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 }
 
@@ -118,45 +138,71 @@ void DualCoreESP32 :: ReadSensorsTask ( void * pvParameters){
   // Inicializar controlador de riego
   iCtrl.init();
 
+  // Variable para almacenar el tiempo de la última lectura
+  unsigned long lastReadTime = 0;
+
+  // Estructura para mensaje MQTT
+  MQTTMessage mqttMessage;
+
   while(true){
-    iCtrl.readAllSensors();
+    // Obtener el tiempo actual
+    unsigned long currentTime = millis();
 
-    String json = iCtrl.createJSON();
+    if(currentTime - lastReadTime >= SENSOR_READ_INTERVAL){
+      lastReadTime = currentTime; 
 
-    iCtrl.saveDataInSD(json);
+      // Realizar la lectura de sensores
+      iCtrl.readAllSensors();
 
-    // Evaluación si es hora de regar
-    if(iCtrl.isManualIrrigationActivated()){
-      if(iCtrl.irrigationStatus){
-        // El usuario activó la opción de regar
+      // Crear y guardar JSON
+      String json = iCtrl.createJSON();
+      iCtrl.saveDataInSD(json);
 
-      }
-    } else {
-      if(iCtrl.isTimerIrrigationActivated()){
-        if(iCtrl.evaluateIfIsTimeToWater()){
-          // Es hora de regar...
-
+      // Evaluación si es hora de regar
+      if(iCtrl.isManualIrrigationActivated()){
+        if(iCtrl.irrigationStatus){
+          // El usuario activó la opción de regar
+          Serial.println("Activación manual");
         }
       } else {
-        if(iCtrl.evaluateIrrigationDecision()){
-          // Se llegó a valores mínimos de los sensores
-
+        if(iCtrl.isTimerIrrigationActivated()){
+          if(iCtrl.evaluateIfIsTimeToWater()){
+            // Es hora de regar...
+            Serial.println("Activación por alarma");
+          }
+        } else {
+          if(iCtrl.evaluateIrrigationDecision()){
+            // Se llegó a valores mínimos de los sensores
+            Serial.println("Activación por parámetros de entrada");
+          }
         }
       }
+      // Copiar el JSON al mensaje MQTT
+      strncpy(mqttMessage.message, json.c_str(), sizeof(mqttMessage.message) - 1);
+      mqttMessage.message[sizeof(mqttMessage.message) - 1] = '\0';  // Asegurar terminación null
+      
+      // Enviar a la cola MQTT
+      xQueueSend(mqttQueue, &mqttMessage, 0);
     }
-    // Queue para envíar JSON con datos
-    Wireless.publishMessage(const char *topic, const char *payload); // MODIFICAR AQUÍ
+
     vTaskDelay(100/portTICK_PERIOD_MS);
   }
 }
-void DualCoreESP32 :: SendDataTask ( void * pvParameters){
-  while(true){
-    vTaskDelay(100/portTICK_PERIOD_MS);
-  }
-}
-void DualCoreESP32 :: ReciveDataTask ( void * pvParameters){
-  while(true){
-    vTaskDelay(100/portTICK_PERIOD_MS);
-  }
-}
+// void DualCoreESP32 :: SendDataTask ( void * pvParameters){
+   
+   
+//    while(true){
+//     // Verificar si hay mensajes para publicar en la cola
+//     if(xQueueReceive(mqttQueue, &receivedMessage, 0) == pdTRUE) {
+//         // Publicar el mensaje si hay conexión MQTT
+//         Wireless.publishMessage(receivedMessage.message);
+//     }
+//     vTaskDelay(100/portTICK_PERIOD_MS);
+//   }
+// }
+// void DualCoreESP32 :: ReciveDataTask ( void * pvParameters){
+//   while(true){
+//     vTaskDelay(100/portTICK_PERIOD_MS);
+//   }
+// }
 #endif
