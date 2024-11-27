@@ -48,18 +48,19 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 // Función para guardar datos en la SD
-void guardarEnSD(const String& data) {
+void guardarEnSD(const String& jsonString) {
     // Abrir el archivo en modo escritura/apéndice
-    File file = SD.open("/datalog.txt", FILE_APPEND);
+    File file = SD.open("/datalog.json", FILE_APPEND); // Cambié el nombre para indicar que es JSON
     if (file) {
-        file.println(data); // Escribir datos en el archivo
-        file.close();       // Cerrar el archivo
-        Serial.println("Datos guardados en datalog.txt");
-        // Serial.println(data);
+        file.println(jsonString); // Escribir JSON en el archivo
+        file.close();             // Cerrar el archivo
+        Serial.println("Datos guardados en datalog.json");
+        Serial.println(jsonString);
     } else {
-        Serial.println("Error al abrir datalog.txt para escritura.");
+        Serial.println("Error al abrir datalog.json para escritura.");
     }
 }
+
 
 void setup() {
     Serial.begin(115200);
@@ -116,21 +117,28 @@ void loop() {
 
     // Publicar datos al topic cada 10 segundos
     static unsigned long lastPublishTime = 0;
-    if (millis() - lastPublishTime > 1000) {
+    if (millis() - lastPublishTime > 1000) { // Publicar cada 10 segundos
         // Obtener lecturas de sensores
-        int ldrValue = analogRead(LDR_PIN);
-        int soilMoisture1 = analogRead(SOIL_MOISTURE1_PIN);
-        int soilMoisture2 = analogRead(SOIL_MOISTURE2_PIN);
+        int ldrValueRaw = analogRead(LDR_PIN);
+        int soilMoisture1Raw = analogRead(SOIL_MOISTURE1_PIN);
+        int soilMoisture2Raw = analogRead(SOIL_MOISTURE2_PIN);
         float temperature = dht.readTemperature();
         float humidity = dht.readHumidity();
         float distance = obtener_distancia();
         DateTime now = rtc.now();
 
+        /*
         // Validar lecturas de sensores
         if (isnan(temperature) || isnan(humidity)) {
             Serial.println("Error leyendo sensor DHT.");
             return;
         }
+        */
+
+        // Mapear valores de sensores al rango de 0 a 100%
+        float ldrValue = map(ldrValueRaw, 0, 4095, 0, 100);
+        float soilMoisture1 = map(soilMoisture1Raw, 0, 4095, 0, 100);
+        float soilMoisture2 = map(soilMoisture2Raw, 0, 4095, 0, 100);
 
         // Crear JSON con estructura deseada
         DynamicJsonDocument doc(512);
@@ -152,7 +160,7 @@ void loop() {
         if (MQTTHandler::isMQTTConnected()) {
             MQTTHandler::publishMessage(topicTX, jsonString.c_str());
             Serial.println("Datos publicados en MQTT");
-            // Serial.println(jsonString);
+            Serial.println(jsonString);
         } else {
             Serial.println("No se pudo publicar. MQTT no está conectado.");
         }
