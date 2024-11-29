@@ -84,9 +84,7 @@ void MQTTHandler::publishMessage(const char* topic, const char* payload) {
     if (isMQTTConnected()) {
         mqttClient.publish(topic, payload);
         Serial.print("Mensaje publicado en el topic ");
-        Serial.print(topic);
-        Serial.print(": ");
-        Serial.println(payload);
+        Serial.println(topic);
     } else {
         Serial.println("No se puede publicar. MQTT no está conectado.");
     }
